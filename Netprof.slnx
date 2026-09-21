@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/generators/">
+    <Project Path="src/generators/Generators.csproj" />
+  </Folder>
+  <Folder Name="/src/library/">
+    <Project Path="src/library/Netprof.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tests.csproj" />
+  </Folder>
+</Solution>
