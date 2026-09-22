@@ -1,9 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="..\src\library\Netprof.csproj" />
-  </ItemGroup>
   <PropertyGroup>
     <AssemblyName>Netprof.Tests</AssemblyName>
     <RootNamespace>$(AssemblyName)</RootNamespace>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)Generated</CompilerGeneratedFilesOutputPath>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Netprof</InterceptorsNamespaces>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\src\library\Netprof.csproj" />
+    <ProjectReference
+      Include="..\src\generators\Generators.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false"
+    />
+  </ItemGroup>
 </Project>

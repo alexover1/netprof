@@ -8,14 +8,14 @@ public sealed class ProfilerTests
     [TestMethod]
     public void TestEnterZoneWithManualIndexing()
     {
-        var profiler = new Profiler(2); // NOTE(alex): Create a new profiler with the specified number of zones.
+        var profiler = new Profiler(1); // NOTE(alex): Create a new profiler with the specified number of zones.
 
-        using (profiler.EnterZone(1))
+        using (profiler.EnterZone(0))
         {
             Thread.SpinWait(100_000);
         }
 
-        var counter = profiler.GetCounter(1);
+        var counter = profiler.GetCounter(0);
         Assert.AreEqual(1L, counter.HitCount);
         Assert.IsTrue(counter.InclusiveTicks > 0);
         Assert.AreEqual(counter.InclusiveTicks, counter.ExclusiveTicks);
@@ -24,13 +24,13 @@ public sealed class ProfilerTests
     [TestMethod]
     public void TestNestedZonesTrackExclusiveTime()
     {
-        var profiler = new Profiler(3); // NOTE(alex): One null zone + two manual zones.
+        var profiler = new Profiler(2);
 
-        using (profiler.EnterZone(1))
+        using (profiler.EnterZone(0))
         {
             Thread.SpinWait(100_000); // NOTE(alex): Sleep a little before...
 
-            using (profiler.EnterZone(2))
+            using (profiler.EnterZone(1))
             {
                 Thread.SpinWait(100_000); // NOTE(alex): Time in a nested zone shouldn't be included in the parent's exclusive time.
             }
@@ -57,12 +57,12 @@ public sealed class ProfilerTests
     [TestMethod]
     public void TestRecursiveMethodCanBeProfiled()
     {
-        var profiler = new Profiler(2);
+        var profiler = new Profiler(1);
 
         int factorial = Factorial(profiler, 5);
         Assert.AreEqual(120, factorial); // NOTE(alex): Math should work.
 
-        var counter = profiler.GetCounter(1);
+        var counter = profiler.GetCounter(0);
         Assert.AreEqual(5, counter.HitCount); // NOTE(alex): HitCount tells you how many times the method recursed!
         Assert.IsTrue(counter.InclusiveTicks > 0);
         Assert.IsTrue(counter.ExclusiveTicks > 0);
@@ -71,7 +71,7 @@ public sealed class ProfilerTests
 
         int Factorial(Profiler profiler, int value)
         {
-            using var zone = profiler.EnterZone(1);
+            using var zone = profiler.EnterZone(0);
 
             if (value <= 1)
             {
@@ -80,5 +80,21 @@ public sealed class ProfilerTests
 
             return value * Factorial(profiler, value - 1);
         }
+    }
+
+    [TestMethod]
+    public void TestAutomaticZones()
+    {
+        var profiler = new Profiler(); // NOTE(alex): Notice how we don't have to provide the number of zones.
+
+        using (profiler.EnterZone()) // NOTE(alex): Notice how we don't have to provide the zone index.
+        {
+            Thread.SpinWait(100_000);
+        }
+
+        var counter = profiler.GetCounter(0);
+        Assert.AreEqual(1L, counter.HitCount);
+        Assert.IsTrue(counter.InclusiveTicks > 0);
+        Assert.AreEqual(counter.InclusiveTicks, counter.ExclusiveTicks);
     }
 }

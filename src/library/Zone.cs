@@ -10,19 +10,19 @@ namespace Netprof;
 public ref struct Zone : IDisposable
 {
     private readonly Profiler _profiler;
-    private readonly int _counterIndex;
-    private readonly int _parentCounterIndex;
+    private readonly int _index;
+    private readonly int _parentIndex;
     private readonly long _oldInclusiveTicks;
     private readonly long _startTimestamp;
 
-    internal Zone(Profiler profiler, int counterIndex)
+    internal Zone(Profiler profiler, int index)
     {
         _profiler = profiler;
-        _counterIndex = counterIndex;
-        _parentCounterIndex = Profiler.CurrentCounterIndex;
-        _oldInclusiveTicks = _profiler.Counters[counterIndex].InclusiveTicks;
+        _index = index;
+        _parentIndex = Profiler.ParentIndex;
+        _oldInclusiveTicks = _profiler.Counters[index].InclusiveTicks;
 
-        Profiler.CurrentCounterIndex = counterIndex;
+        Profiler.ParentIndex = index;
 
         _startTimestamp = Stopwatch.GetTimestamp();
     }
@@ -30,10 +30,10 @@ public ref struct Zone : IDisposable
     public void Dispose()
     {
         var elapsedTicks = Stopwatch.GetTimestamp() - _startTimestamp;
-        Profiler.CurrentCounterIndex = _parentCounterIndex;
+        Profiler.ParentIndex = _parentIndex;
 
-        ref Counter parent = ref _profiler.Counters[_parentCounterIndex];
-        ref Counter counter = ref _profiler.Counters[_counterIndex];
+        ref Counter parent = ref _profiler.Counters[_parentIndex];
+        ref Counter counter = ref _profiler.Counters[_index];
 
         parent.ExclusiveTicks -= elapsedTicks;
         counter.ExclusiveTicks += elapsedTicks;

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace Netprof;
@@ -7,21 +8,34 @@ namespace Netprof;
 /// </summary>
 public class Profiler
 {
+    private static int _generatedZoneCount; // NOTE(alex): Populated when the Netprof.Generators assembly is included.
+
     [ThreadStatic]
-    private static int _currentCounterIndex;
+    private static int _parentIndex;
 
     internal Counter[] Counters { get; }
 
-    internal static int CurrentCounterIndex
+    internal static int ParentIndex
     {
-        get => _currentCounterIndex;
-        set => _currentCounterIndex = value;
+        get => _parentIndex;
+        set => _parentIndex = value;
+    }
+
+    public Profiler()
+        : this(_generatedZoneCount)
+    {
     }
 
     public Profiler(int zoneCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(zoneCount); // NOTE(alex): Zero is allowed.
-        Counters = new Counter[zoneCount];
+        Counters = new Counter[zoneCount + 1];
+    }
+
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public static void RegisterGeneratedZoneCount(int zoneCount)
+    {
+        _generatedZoneCount = zoneCount;
     }
 
     public int ZoneCount => Counters.Length;
@@ -32,7 +46,7 @@ public class Profiler
     /// </summary>
     public Counter GetCounter(int index)
     {
-        return Counters[index];
+        return Counters[index + 1];
     }
 
     /// <summary>
@@ -51,16 +65,16 @@ public class Profiler
     [MethodImpl(MethodImplOptions.NoInlining)]
     public Zone EnterZone()
     {
-        throw new InvalidOperationException("Method Profiler.EnterZone() was not intercepted. Reference Netprof.Generators as an analyzer and enable the Netprof.Generated interceptor namespace.");
+        throw new InvalidOperationException("Method Profiler.EnterZone() was not intercepted. Reference Netprof.Generators as an analyzer and enable the Netprof interceptor namespace.");
     }
 
     /// <summary>
-    /// Enters the zone represented by <paramref name="counterIndex"/>.
+    /// Enters the zone represented by <paramref name="index"/>.
     /// While this method can be manually called, it is generally prefer to use <see cref="EnterZone()"/> instead.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Zone EnterZone(int counterIndex)
+    public Zone EnterZone(int index)
     {
-        return new Zone(this, counterIndex);
+        return new Zone(this, index + 1);
     }
 }
