@@ -97,7 +97,12 @@ public sealed class ProfilerTests
         Assert.IsTrue(counter.InclusiveTicks > 0);
         Assert.AreEqual(counter.InclusiveTicks, counter.ExclusiveTicks);
 
-        using var file = File.CreateText("profile.txt");
-        profiler.WriteReport(file);
+        using var writer = new StringWriter();
+        profiler.WriteReport(writer);
+
+        var lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.AreEqual(2, lines.Length);
+        Assert.IsTrue(lines[0].StartsWith("Total time:"));
+        Assert.IsTrue(lines[1].StartsWith("Netprof.Tests.ProfilerTests.TestAutomaticZones()[1]:"));
     }
 }
