@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/example/">
+    <Project Path="example/Example.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/generators/">
     <Project Path="src/generators/Generators.csproj" />

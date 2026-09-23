@@ -147,12 +147,12 @@ public class Profiler
     /// <param name="writer">The text writer that receives the report.</param>
     public void WriteElapsedTime(TextWriter writer, Counter counter, long totalElapsedTicks)
     {
-        var percentOfTotal = counter.ExclusiveTicks / (double)totalElapsedTicks;
+        var percentOfTotal = counter.ExclusiveTicks * 100.0 / totalElapsedTicks;
         writer.Write($"  {counter.Name}[{counter.HitCount}]: {counter.InclusiveTicks} ({percentOfTotal:F2}%");
         if (counter.InclusiveTicks != counter.ExclusiveTicks)
         {
-            var percentWithChildren = counter.InclusiveTicks / (double)totalElapsedTicks;
-            writer.Write($", {percentWithChildren:F2} w/children");
+            var percentWithChildren = counter.InclusiveTicks * 100.0 / totalElapsedTicks;
+            writer.Write($", {percentWithChildren:F2}% w/children");
         }
         writer.WriteLine(")");
     }
