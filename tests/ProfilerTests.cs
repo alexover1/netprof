@@ -96,5 +96,8 @@ public sealed class ProfilerTests
         Assert.AreEqual(1L, counter.HitCount);
         Assert.IsTrue(counter.InclusiveTicks > 0);
         Assert.AreEqual(counter.InclusiveTicks, counter.ExclusiveTicks);
+
+        using var file = File.CreateText("profile.txt");
+        profiler.WriteReport(file);
     }
 }

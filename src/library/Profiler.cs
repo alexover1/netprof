@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Netprof;
@@ -14,6 +15,7 @@ public class Profiler
     private static int _currentCounterIndex;
 
     private readonly Counter[] _counters;
+    private long _startTimestamp;
 
     internal static int CurrentCounterIndex
     {
@@ -45,6 +47,7 @@ public class Profiler
     public Profiler(int zoneCount)
     {
         _counters = new Counter[zoneCount + 1];
+        _startTimestamp = Stopwatch.GetTimestamp();
     }
 
     /// <summary>
@@ -113,5 +116,53 @@ public class Profiler
     public Zone EnterZone(int index)
     {
         return new Zone(this, index + 1);
+    }
+
+    /// <summary>
+    /// Writes a formatted profiling report containing timing and hit-count information for all zones.
+    /// </summary>
+    /// <remarks>
+    /// Counter values are read without synchronization and may reflect partially updated profiling data
+    /// if zones are active while the report is being written.
+    /// </remarks>
+    /// <param name="writer">The text writer that receives the report.</param>
+    public void WriteReport(TextWriter writer)
+    {
+        var totalElapsedTicks = Stopwatch.GetTimestamp() - _startTimestamp;
+        writer.WriteLine($"Total time: {totalElapsedTicks*1000.0/Stopwatch.Frequency:F4}ms (timer freq {Stopwatch.Frequency})");
+
+        for (var i = 1; i < _counters.Length; i += 1)
+        {
+            var counter = _counters[i];
+            if (counter.InclusiveTicks != 0)
+            {
+                WriteElapsedTime(writer, counter, totalElapsedTicks);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes the elapsed time of a single counter and its percentage of the total elapsed time.
+    /// </summary>
+    /// <param name="writer">The text writer that receives the report.</param>
+    public void WriteElapsedTime(TextWriter writer, Counter counter, long totalElapsedTicks)
+    {
+        var percentOfTotal = counter.ExclusiveTicks / (double)totalElapsedTicks;
+        writer.Write($"  {counter.Name}[{counter.HitCount}]: {counter.InclusiveTicks} ({percentOfTotal:F2}%");
+        if (counter.InclusiveTicks != counter.ExclusiveTicks)
+        {
+            var percentWithChildren = counter.InclusiveTicks / (double)totalElapsedTicks;
+            writer.Write($", {percentWithChildren:F2} w/children");
+        }
+        writer.WriteLine(")");
+    }
+
+    /// <summary>
+    /// Writes a formatted profiling report to the console output.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PrintReport()
+    {
+        WriteReport(Console.Out);
     }
 }
