@@ -8,6 +8,7 @@ namespace Netprof;
 /// </summary>
 public struct Counter
 {
+    public string? Name { get; internal set; }
     public long InclusiveTicks { get; internal set; }
     public long ExclusiveTicks { get; internal set; }
     public long HitCount { get; internal set; }

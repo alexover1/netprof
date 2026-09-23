@@ -19,10 +19,10 @@ public ref struct Zone : IDisposable
     {
         _profiler = profiler;
         _index = index;
-        _parentIndex = Profiler.ParentIndex;
-        _oldInclusiveTicks = _profiler.Counters[index].InclusiveTicks;
+        _parentIndex = Profiler.CurrentCounterIndex;
+        _oldInclusiveTicks = _profiler[index].InclusiveTicks;
 
-        Profiler.ParentIndex = index;
+        Profiler.CurrentCounterIndex = index;
 
         _startTimestamp = Stopwatch.GetTimestamp();
     }
@@ -30,10 +30,10 @@ public ref struct Zone : IDisposable
     public void Dispose()
     {
         var elapsedTicks = Stopwatch.GetTimestamp() - _startTimestamp;
-        Profiler.ParentIndex = _parentIndex;
+        Profiler.CurrentCounterIndex = _parentIndex;
 
-        ref Counter parent = ref _profiler.Counters[_parentIndex];
-        ref Counter counter = ref _profiler.Counters[_index];
+        ref Counter parent = ref _profiler[_parentIndex];
+        ref Counter counter = ref _profiler[_index];
 
         parent.ExclusiveTicks -= elapsedTicks;
         counter.ExclusiveTicks += elapsedTicks;
