@@ -1,43 +1,35 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Netprof;
 
 /// <summary>
-/// A disposable profile zone associated with a reference to a particular <see cref="Counter"/> instance.
+/// A synchronous profiling scope.
 ///
-/// Constructing a new <see cref="Zone"/> corresponds to opening the referenced counter.
-/// Disposing the zone corresponds to closing the referenced counter.
-public ref struct Zone : IDisposable
+/// The zone must be disposed on the same stack frame that it was called from,
+/// otherwise profiling information will not be accurate.
+/// </summary>
+public ref struct Zone
 {
-    private readonly Profiler _profiler;
-    private readonly int _index;
-    private readonly int _parentIndex;
-    private readonly long _oldInclusiveTicks;
-    private readonly long _startTimestamp;
+    private EventWriter? _writer;
+    private ref EventRecord _event;
+    private readonly int _eventIndex;
 
-    internal Zone(Profiler profiler, int index)
+    internal Zone(EventWriter writer, ref EventRecord profileEvent, int eventIndex)
     {
-        _profiler = profiler;
-        _index = index;
-        _parentIndex = Profiler.CurrentCounterIndex;
-        _oldInclusiveTicks = _profiler[index].InclusiveTicks;
-
-        Profiler.CurrentCounterIndex = index;
-
-        _startTimestamp = Stopwatch.GetTimestamp();
+        _writer = writer;
+        _event = ref profileEvent;
+        _eventIndex = eventIndex;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {
-        var elapsedTicks = Stopwatch.GetTimestamp() - _startTimestamp;
-        Profiler.CurrentCounterIndex = _parentIndex;
-
-        ref Counter parent = ref _profiler[_parentIndex];
-        ref Counter counter = ref _profiler[_index];
-
-        parent.ExclusiveTicks -= elapsedTicks;
-        counter.ExclusiveTicks += elapsedTicks;
-        counter.InclusiveTicks = _oldInclusiveTicks + elapsedTicks;
-        counter.HitCount += 1;
+        if (_writer is not null)
+        {
+            var endTimestamp = Stopwatch.GetTimestamp();
+            Profiler.ExitZone(_writer, ref _event, _eventIndex, endTimestamp);
+            _writer = null;
+        }
     }
 }

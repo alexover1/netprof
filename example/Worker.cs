@@ -1,21 +1,33 @@
 namespace Netprof.Example;
 
-public class Worker(ILogger<Worker> logger, Profiler profiler) : BackgroundService
+public class Worker(ILogger<Worker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Worker started.");
+        using var session = Profiler.StartRecording();
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            var batch = await ReceiveBatchAsync(stoppingToken);
-            ProcessBatch(batch);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var batch = await ReceiveBatchAsync(stoppingToken);
+                ProcessBatch(batch);
+            }
+        }
+        finally
+        {
+            session.Stop();
+            var recording = session.Capture();
+            foreach (var ev in recording.Threads[0].Events)
+            {
+                Console.WriteLine(ev.Name);
+            }
         }
     }
 
     private void ProcessBatch(TemperatureReading[] readings)
     {
-        using var zone = profiler.EnterZone();
+        using var zone = Profiler.EnterZone();
 
         var average = CalculateAverageTemperature(readings);
 
@@ -24,7 +36,7 @@ public class Worker(ILogger<Worker> logger, Profiler profiler) : BackgroundServi
 
     private double CalculateAverageTemperature(TemperatureReading[] readings)
     {
-        using var zone = profiler.EnterZone();
+        using var zone = Profiler.EnterZone();
 
         var total = 0.0;
 
@@ -38,7 +50,7 @@ public class Worker(ILogger<Worker> logger, Profiler profiler) : BackgroundServi
 
     private void UploadResults(double averageTemperature)
     {
-        using var zone = profiler.EnterZone();
+        using var zone = Profiler.EnterZone();
 
         logger.LogInformation("Average temperature: {Temperature:F2}", averageTemperature);
     }
