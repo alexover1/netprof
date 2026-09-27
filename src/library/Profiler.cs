@@ -1,168 +1,159 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Netprof;
 
 /// <summary>
-/// Collects timing information for profiling zones.
+/// Records low-overhead synchronous and logical async profiling events.
 /// </summary>
-public class Profiler
+public static class Profiler
 {
-    private static string[] _generatedZoneNames = []; // NOTE(alex): Populated when the Netprof.Generators assembly is included.
+    private static readonly AsyncLocal<AsyncSpanContext?> _asyncContext = new();
+    private static EventSession? _currentSession;
 
     [ThreadStatic]
-    private static int _currentCounterIndex;
+    private static EventSession? _cachedSession;
 
-    private readonly Counter[] _counters;
-    private long _startTimestamp;
+    [ThreadStatic]
+    private static EventWriter? _cachedWriter;
 
-    internal static int CurrentCounterIndex
+    [ThreadStatic]
+    private static EventSession? _activeSyncSession;
+
+    [ThreadStatic]
+    private static EventWriter? _activeSyncWriter;
+
+    /// <summary>
+    /// Gets whether a recording session is currently accepting new events.
+    /// </summary>
+    public static bool IsRecording => Volatile.Read(ref _currentSession) is not null;
+
+    /// <summary>
+    /// Starts a new recording. Only one global recording can be active at a time.
+    /// </summary>
+    public static EventSession StartRecording()
     {
-        get => _currentCounterIndex;
-        set => _currentCounterIndex = value;
-    }
-
-    internal ref Counter this[int internalIndex]
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref _counters[internalIndex];
+        var session = new EventSession(Stopwatch.GetTimestamp());
+        if (Interlocked.CompareExchange(ref _currentSession, session, null) is not null)
+        {
+            throw new InvalidOperationException("A profiling session is already active.");
+        }
+        return session;
     }
 
     /// <summary>
-    /// Creates a profiler containing the zones discovered by the source generator.
+    /// Enters a synchronous profiling zone.
+    ///
+    /// The name of the zone will be replaced with the name of the method <see cref="EnterZone"/> was called from.
     /// </summary>
-    public Profiler()
-        : this(_generatedZoneNames.Length)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Zone EnterZone()
     {
-        for (var i = 0; i < _generatedZoneNames.Length; i += 1)
+        throw new InvalidOperationException("The call to this method was not intercepted. Reference the Netprof.Generators package and enable Netprof using InterceptorsNamespaces in your project file.");
+    }
+
+    /// <summary>
+    /// Enters a synchronous profiling zone with the name <paramref name="name"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Zone EnterZone(string name)
+    {
+        var writer = _activeSyncWriter;
+        if (writer is not null)
         {
-            _counters[i + 1].Name = _generatedZoneNames[i];
+            return writer.Enter(name);
+        }
+
+        var session = Volatile.Read(ref _currentSession);
+        if (session is null || !session.TryEnterSyncRoot())
+        {
+            return default;
+        }
+
+        writer = GetOrCreateWriter(session);
+        _activeSyncSession = session;
+        _activeSyncWriter = writer;
+
+        return writer.Enter(name);
+    }
+
+    /// <summary>
+    /// Enters a logical profiling zone that can survive <c>await</c>.
+    /// </summary>
+    public static AsyncZone EnterAsyncZone(string name)
+    {
+        var session = Volatile.Read(ref _currentSession);
+        if (session is null || !session.TryEnterAsyncSpan())
+        {
+            return default;
+        }
+
+        var previous = _asyncContext.Value;
+        var spanId = session.NextSpanId();
+        var parentSpanId = previous is not null && ReferenceEquals(previous.Session, session) ? previous.SpanId : 0;
+        var context = new AsyncSpanContext(session, spanId);
+        var writer = GetOrCreateWriter(session);
+        var state = new AsyncSpanState(session, name, previous, context, parentSpanId, Stopwatch.GetTimestamp(), writer.ThreadIndex);
+        _asyncContext.Value = context;
+
+        return new AsyncZone(state);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ExitZone(EventWriter writer, ref EventRecord record, int eventIndex, long endTimestamp)
+    {
+        if (writer.Exit(ref record, eventIndex, endTimestamp))
+        {
+            var session = _activeSyncSession;
+            _activeSyncWriter = null;
+            _activeSyncSession = null;
+            session?.ExitSyncRoot();
         }
     }
 
-    /// <summary>
-    /// Creates a profiler with the specified number of manually indexed zones.
-    /// </summary>
-    public Profiler(int zoneCount)
+    internal static void ExitAsyncZone(AsyncSpanState state, long endTimestamp)
     {
-        _counters = new Counter[zoneCount + 1];
-        _startTimestamp = Stopwatch.GetTimestamp();
+        _asyncContext.Value = state.PreviousContext;
+        var writer = GetOrCreateWriter(state.Session);
+        writer.WriteAsync(new AsyncEventRecord(state.Name, state.Context.SpanId, state.ParentSpanId, state.StartTimestamp,
+                                               endTimestamp, state.StartThreadIndex, writer.ThreadIndex));
+        state.Session.ExitAsyncSpan();
     }
 
-    /// <summary>
-    /// Gets the number of user-visible profiling zones.
-    /// </summary>
-    public int ZoneCount => _counters.Length - 1;
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static void RegisterGeneratedZones(string[] names)
+    internal static void StopRecording(EventSession session)
     {
-        ArgumentNullException.ThrowIfNull(names);
+        if (session.IsStopped) return;
 
-        // NOTE(alex): Don't retain an externally mutable array (just in case).
-        _generatedZoneNames = (string[])names.Clone();
+        var current = Interlocked.CompareExchange(ref _currentSession, null, session);
+        if (ReferenceEquals(current, session))
+        {
+            session.MarkStopped(Stopwatch.GetTimestamp());
+            return;
+        }
+
+        if (!session.IsStopped)
+        {
+            throw new InvalidOperationException("The supplied session is not the active profiling session.");
+        }
     }
 
-    /// <summary>
-    /// Returns a copy of all counters.
-    /// The returned value may contain partially updated data if any zones are
-    /// being updated concurrently.
-    /// </summary>
-    public Counter[] GetCounters()
-    {
-        var result = new Counter[ZoneCount];
-        Array.Copy(_counters, 1, result, 0, result.Length);
-        return result;
-    }
-
-    /// <summary>
-    /// Returns a copy of a counter at the specified zone index.
-    /// The returned value may contain partially updated data if the zone is
-    /// being updated concurrently.
-    /// </summary>
-    public Counter GetCounter(int index)
-    {
-        return _counters[index + 1];
-    }
-
-    /// <summary>
-    /// Replaces the name of the profiling zone represented by <paramref name="index"/> with <paramref name="name"/>.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetZoneName(int index, string? name)
+    private static EventWriter GetOrCreateWriter(EventSession session)
     {
-        _counters[index + 1].Name = name;
+        if (ReferenceEquals(_cachedSession, session) && _cachedWriter is not null)
+        {
+            return _cachedWriter;
+        }
+
+        return BindCurrentThread(session);
     }
 
-    /// <summary>
-    /// Enters the zone based on the source location this method is called from.
-    /// A unique <see cref="Counter"/> object will be generated for each invocation of this method,
-    /// and its index will be substituted automatically at compile-time by the source generator.
-    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public Zone EnterZone()
+    private static EventWriter BindCurrentThread(EventSession session)
     {
-        throw new InvalidOperationException("Method Profiler.EnterZone() was not intercepted. Reference Netprof.Generators as an analyzer and enable the Netprof interceptor namespace.");
-    }
-
-    /// <summary>
-    /// Enters the profiling zone represented by <paramref name="index"/>.
-    /// </summary>
-    /// <remarks>
-    /// Normally <see cref="EnterZone()"/> should be used so that the source generator assigns the index automatically.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Zone EnterZone(int index)
-    {
-        return new Zone(this, index + 1);
-    }
-
-    /// <summary>
-    /// Writes a formatted profiling report containing timing and hit-count information for all zones.
-    /// </summary>
-    /// <remarks>
-    /// Counter values are read without synchronization and may reflect partially updated profiling data
-    /// if zones are active while the report is being written.
-    /// </remarks>
-    /// <param name="writer">The text writer that receives the report.</param>
-    public void WriteReport(TextWriter writer)
-    {
-        var totalElapsedTicks = Stopwatch.GetTimestamp() - _startTimestamp;
-        writer.WriteLine($"Total time: {totalElapsedTicks*1000.0/Stopwatch.Frequency:F4}ms (timer freq {Stopwatch.Frequency})");
-
-        for (var i = 1; i < _counters.Length; i += 1)
-        {
-            var counter = _counters[i];
-            if (counter.InclusiveTicks != 0)
-            {
-                WriteElapsedTime(writer, counter, totalElapsedTicks);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Writes the elapsed time of a single counter and its percentage of the total elapsed time.
-    /// </summary>
-    /// <param name="writer">The text writer that receives the report.</param>
-    public void WriteElapsedTime(TextWriter writer, Counter counter, long totalElapsedTicks)
-    {
-        var percentOfTotal = counter.ExclusiveTicks * 100.0 / totalElapsedTicks;
-        writer.Write($"  {counter.Name}[{counter.HitCount}]: {counter.InclusiveTicks} ({percentOfTotal:F2}%");
-        if (counter.InclusiveTicks != counter.ExclusiveTicks)
-        {
-            var percentWithChildren = counter.InclusiveTicks * 100.0 / totalElapsedTicks;
-            writer.Write($", {percentWithChildren:F2}% w/children");
-        }
-        writer.WriteLine(")");
-    }
-
-    /// <summary>
-    /// Writes a formatted profiling report to the console output.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PrintReport()
-    {
-        WriteReport(Console.Out);
+        var writer = session.CreateWriterForCurrentThread();
+        _cachedSession = session;
+        _cachedWriter = writer;
+        return writer;
     }
 }

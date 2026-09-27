@@ -8,7 +8,7 @@
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
 
-    <MSTestParallelizeScope>MethodLevel</MSTestParallelizeScope>
+    <MSTestParallelizeScope>ClassLevel</MSTestParallelizeScope>
     <MSTestParallelizeWorkers>0</MSTestParallelizeWorkers>
   </PropertyGroup>
 
