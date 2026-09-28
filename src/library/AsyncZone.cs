@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace Netprof;
 
 /// <summary>
-/// A logical profiling scope that may cross <c>await</c> boundaries as well as physical threads.
+/// A profiling scope that may cross <c>await</c> boundaries and physical threads.
 /// </summary>
 public readonly struct AsyncZone : IDisposable
 {
@@ -14,9 +14,11 @@ public readonly struct AsyncZone : IDisposable
     public void Dispose()
     {
         var state = _state;
-        if (state is null || Interlocked.Exchange(ref state.Disposed, 1) != 0) return;
-        var endTimestamp = Stopwatch.GetTimestamp();
-        Profiler.ExitAsyncZone(state, endTimestamp);
+        if (state is not null && Interlocked.Exchange(ref state.Disposed, 1) == 0)
+        {
+            var endTimestamp = Stopwatch.GetTimestamp();
+            Profiler.ExitAsyncZone(state, endTimestamp);
+        }
     }
 }
 
@@ -34,8 +36,15 @@ internal sealed class AsyncSpanContext
 
 internal sealed class AsyncSpanState
 {
-    internal AsyncSpanState(EventSession session, string name, AsyncSpanContext? previousContext, AsyncSpanContext context,
-        long parentSpanId, long startTimestamp, int startThreadIndex)
+    internal AsyncSpanState(
+        EventSession session,
+        string name,
+        AsyncSpanContext? previousContext,
+        AsyncSpanContext context,
+        long parentSpanId,
+        long startTimestamp,
+        int startThreadIndex
+    )
     {
         Session = session;
         Name = name;

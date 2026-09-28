@@ -4,7 +4,21 @@ using System.Runtime.CompilerServices;
 namespace Netprof;
 
 /// <summary>
-/// Records low-overhead synchronous and logical async profiling events.
+/// Records events, both synchronous and asynchronous, that occur on a particular
+/// thread or async context. Event recording is designed to be inherently low overhead,
+/// so that the opening and closing of profiling zones does not drastically affect the
+/// performance of the method being profiled. However, this does not mean that profiling
+/// has no effect on program runtime. A program that does not record profiling information
+/// will certainly be faster than one that does. But it does mean that a great effort has
+/// been put into ensuring profiling will not skew the results, so that a profiling report
+/// will be as accurate as it can be.
+///
+/// Depending on the runtime's implementation of <see cref="AsyncLocal"/>, profiling an
+/// asynchronous zone may have more cost than a synchronous one. However, this is usually
+/// accepted behavior due to the factmethods that use async are generally ones that depend
+/// on results from IO or the network, in which case the order of measured time of a zone
+/// is typically higher than that of a synchronous method that only does computation (in
+/// which case profiling can be on the order of cycles).
 /// </summary>
 public static class Profiler
 {
@@ -49,7 +63,9 @@ public static class Profiler
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Zone EnterZone()
     {
-        throw new InvalidOperationException("The call to this method was not intercepted. Reference the Netprof.Generators package and enable Netprof using InterceptorsNamespaces in your project file.");
+        throw new InvalidOperationException(
+            "The call to this method was not intercepted. Reference the Netprof.Generators package and enable Netprof using InterceptorsNamespaces in your project file."
+        );
     }
 
     /// <summary>
@@ -90,19 +106,35 @@ public static class Profiler
 
         var previous = _asyncContext.Value;
         var spanId = session.NextSpanId();
-        var parentSpanId = previous is not null && ReferenceEquals(previous.Session, session) ? previous.SpanId : 0;
+        var parentSpanId =
+            previous is not null && ReferenceEquals(previous.Session, session)
+                ? previous.SpanId
+                : 0;
         var context = new AsyncSpanContext(session, spanId);
         var writer = GetOrCreateWriter(session);
-        var state = new AsyncSpanState(session, name, previous, context, parentSpanId, Stopwatch.GetTimestamp(), writer.ThreadIndex);
+        var state = new AsyncSpanState(
+            session,
+            name,
+            previous,
+            context,
+            parentSpanId,
+            Stopwatch.GetTimestamp(),
+            writer.ThreadIndex
+        );
         _asyncContext.Value = context;
 
         return new AsyncZone(state);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ExitZone(EventWriter writer, ref EventRecord record, int eventIndex, long endTimestamp)
+    internal static void ExitZone(
+        EventWriter writer,
+        ref Event zoneEvent,
+        int eventIndex,
+        long endTimestamp
+    )
     {
-        if (writer.Exit(ref record, eventIndex, endTimestamp))
+        if (writer.Exit(ref zoneEvent, eventIndex, endTimestamp))
         {
             var session = _activeSyncSession;
             _activeSyncWriter = null;
@@ -115,14 +147,26 @@ public static class Profiler
     {
         _asyncContext.Value = state.PreviousContext;
         var writer = GetOrCreateWriter(state.Session);
-        writer.WriteAsync(new AsyncEventRecord(state.Name, state.Context.SpanId, state.ParentSpanId, state.StartTimestamp,
-                                               endTimestamp, state.StartThreadIndex, writer.ThreadIndex));
+        writer.WriteAsync(
+            new AsyncEvent(
+                state.Name,
+                state.Context.SpanId,
+                state.ParentSpanId,
+                state.StartTimestamp,
+                endTimestamp,
+                state.StartThreadIndex,
+                writer.ThreadIndex
+            )
+        );
         state.Session.ExitAsyncSpan();
     }
 
     internal static void StopRecording(EventSession session)
     {
-        if (session.IsStopped) return;
+        if (session.IsStopped)
+        {
+            return;
+        }
 
         var current = Interlocked.CompareExchange(ref _currentSession, null, session);
         if (ReferenceEquals(current, session))
@@ -133,7 +177,9 @@ public static class Profiler
 
         if (!session.IsStopped)
         {
-            throw new InvalidOperationException("The supplied session is not the active profiling session.");
+            throw new InvalidOperationException(
+                "The supplied session is not the active profiling session."
+            );
         }
     }
 
