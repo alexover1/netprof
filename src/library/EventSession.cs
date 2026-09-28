@@ -3,9 +3,9 @@ using System.Diagnostics;
 namespace Netprof;
 
 /// <summary>
-/// Owns one profiling recording and the per-thread event streams collected during it.
+/// A session corresponds to one profiling recording and the per-thread event streams collected during it.
 /// </summary>
-public class EventSession : IDisposable
+public sealed class EventSession : IDisposable
 {
     private int _syncRootState;
     private int _asyncSpanState;
@@ -21,17 +21,27 @@ public class EventSession : IDisposable
     public bool IsStopped => Volatile.Read(ref _stopped) != 0;
 
     internal bool TryEnterSyncRoot() => TryEnter(ref _syncRootState);
+
     internal bool TryEnterAsyncSpan() => TryEnter(ref _asyncSpanState);
+
     internal void ExitSyncRoot() => Interlocked.Decrement(ref _syncRootState);
+
     internal void ExitAsyncSpan() => Interlocked.Decrement(ref _asyncSpanState);
+
     internal long NextSpanId() => Interlocked.Increment(ref _nextSpanId);
-    internal bool IsQuiescent => (Volatile.Read(ref _syncRootState) & int.MaxValue) == 0 &&
-        (Volatile.Read(ref _asyncSpanState) & int.MaxValue) == 0;
+
+    internal bool IsQuiescent =>
+        (Volatile.Read(ref _syncRootState) & int.MaxValue) == 0
+        && (Volatile.Read(ref _asyncSpanState) & int.MaxValue) == 0;
 
     internal EventWriter CreateWriterForCurrentThread()
     {
-        var writer = new EventWriter(this, Interlocked.Increment(ref _nextThreadIndex) - 1,
-            Environment.CurrentManagedThreadId, Thread.CurrentThread.Name);
+        var writer = new EventWriter(
+            this,
+            Interlocked.Increment(ref _nextThreadIndex) - 1,
+            Environment.CurrentManagedThreadId,
+            Thread.CurrentThread.Name
+        );
 
         // NOTE(alex): Writer registration is rare, so a simple lock-free intrusive stack is sufficient.
         EventWriter? head;
@@ -39,8 +49,7 @@ public class EventSession : IDisposable
         {
             head = Volatile.Read(ref _writers);
             writer.Next = head;
-        }
-        while (Interlocked.CompareExchange(ref _writers, writer, head) != head);
+        } while (Interlocked.CompareExchange(ref _writers, writer, head) != head);
         return writer;
     }
 
@@ -61,7 +70,7 @@ public class EventSession : IDisposable
     public void Stop() => Profiler.StopRecording(this);
 
     /// <summary>
-    /// Copies the completed event streams into an immutable recording snapshot.
+    /// Copies the completed event streams into an immutable snapshot for reporting.
     /// </summary>
     public ProfileRecording Capture()
     {
@@ -72,7 +81,9 @@ public class EventSession : IDisposable
 
         if (!IsQuiescent)
         {
-            throw new InvalidOperationException("Profiling scopes are still open. Capture after they have completed.");
+            throw new InvalidOperationException(
+                "Profiling scopes are still open. Capture after they have completed."
+            );
         }
 
         var writers = new List<EventWriter>();

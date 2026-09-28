@@ -3,6 +3,14 @@ using System.Runtime.CompilerServices;
 
 namespace Netprof;
 
+/// <summary>
+/// Writes events to an internal linked-list of event array chunks.
+///
+/// A single instance of <see cref="EventWriter"/> should be created for each thread.
+/// The event writer holds a reference to the <see cref="EventSession"/> that was active
+/// at the time of its creation. When zones are closed, an event will be written to the
+/// event writer of the current thread.
+/// </summary>
 internal class EventWriter
 {
     private const int EventsPerChunk = 1024;
@@ -10,13 +18,13 @@ internal class EventWriter
     [InlineArray(EventsPerChunk)]
     private struct EventArray
     {
-        private EventRecord _element0;
+        private Event _element0;
     }
 
     [InlineArray(EventsPerChunk)]
     private struct AsyncEventArray
     {
-        private AsyncEventRecord _element0;
+        private AsyncEvent _element0;
     }
 
     private sealed class EventChunk
@@ -45,7 +53,12 @@ internal class EventWriter
 
     internal EventWriter? Next;
 
-    internal EventWriter(EventSession session, int threadIndex, int managedThreadId, string? threadName)
+    internal EventWriter(
+        EventSession session,
+        int threadIndex,
+        int managedThreadId,
+        string? threadName
+    )
     {
         _session = session;
         ThreadIndex = threadIndex;
@@ -71,31 +84,34 @@ internal class EventWriter
         }
 
         var eventIndex = _eventCount++;
-        ref var record = ref chunk!.Events[slot];
+        ref var slotEvent = ref chunk!.Events[slot];
         chunk.Count = slot + 1;
-        record.Name = name;
-        record.ParentIndex = _currentEventIndex;
-        record.EndTimestamp = 0;
+        slotEvent.Name = name;
+        slotEvent.ParentIndex = _currentEventIndex;
+        slotEvent.EndTimestamp = 0;
         _currentEventIndex = eventIndex;
         _openZoneCount++;
-        record.StartTimestamp = Stopwatch.GetTimestamp();
-        return new Zone(this, ref record, eventIndex);
+        slotEvent.StartTimestamp = Stopwatch.GetTimestamp();
+        return new Zone(this, ref slotEvent, eventIndex);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool Exit(ref EventRecord record, int eventIndex, long endTimestamp)
+    internal bool Exit(ref Event syncEvent, int eventIndex, long endTimestamp)
     {
 #if DEBUG
-        Debug.Assert(_currentEventIndex == eventIndex, "Profiling zones must be disposed in stack order.");
+        Debug.Assert(
+            _currentEventIndex == eventIndex,
+            "Profiling zones must be disposed in stack order."
+        );
 #endif
-        record.EndTimestamp = endTimestamp;
-        _currentEventIndex = record.ParentIndex;
+        syncEvent.EndTimestamp = endTimestamp;
+        _currentEventIndex = syncEvent.ParentIndex;
         _openZoneCount--;
-        return record.ParentIndex < 0;
+        return syncEvent.ParentIndex < 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void WriteAsync(AsyncEventRecord record)
+    internal void WriteAsync(AsyncEvent asyncEvent)
     {
         var chunk = _asyncTail;
         var slot = chunk?.Count ?? EventsPerChunk;
@@ -105,7 +121,7 @@ internal class EventWriter
             slot = 0;
         }
 
-        chunk!.Events[slot] = record;
+        chunk!.Events[slot] = asyncEvent;
         chunk.Count = slot + 1;
         _asyncEventCount++;
     }
@@ -114,8 +130,14 @@ internal class EventWriter
     private EventChunk Grow()
     {
         var chunk = new EventChunk();
-        if (_tail is null) _head = chunk;
-        else _tail.Next = chunk;
+        if (_tail is null)
+        {
+            _head = chunk;
+        }
+        else
+        {
+            _tail.Next = chunk;
+        }
         _tail = chunk;
         return chunk;
     }
@@ -124,8 +146,14 @@ internal class EventWriter
     private AsyncEventChunk GrowAsync()
     {
         var chunk = new AsyncEventChunk();
-        if (_asyncTail is null) _asyncHead = chunk;
-        else _asyncTail.Next = chunk;
+        if (_asyncTail is null)
+        {
+            _asyncHead = chunk;
+        }
+        else
+        {
+            _asyncTail.Next = chunk;
+        }
         _asyncTail = chunk;
         return chunk;
     }
@@ -134,7 +162,9 @@ internal class EventWriter
     {
         if (_openZoneCount != 0)
         {
-            throw new InvalidOperationException($"Thread {ManagedThreadId} still has {_openZoneCount} open profiling zones.");
+            throw new InvalidOperationException(
+                $"Thread {ManagedThreadId} still has {_openZoneCount} open profiling zones."
+            );
         }
 
         var events = new ProfileEvent[_eventCount];
@@ -146,9 +176,16 @@ internal class EventWriter
                 ref var source = ref chunk.Events[i];
                 if (source.EndTimestamp == 0 || source.Name is null)
                 {
-                    throw new InvalidOperationException("Encountered an unfinished profiling event.");
+                    throw new InvalidOperationException(
+                        "Encountered an unfinished profiling event."
+                    );
                 }
-                events[destination++] = new ProfileEvent(source.Name, source.StartTimestamp, source.EndTimestamp, source.ParentIndex);
+                events[destination++] = new ProfileEvent(
+                    source.Name,
+                    source.StartTimestamp,
+                    source.EndTimestamp,
+                    source.ParentIndex
+                );
             }
         }
 
@@ -159,8 +196,15 @@ internal class EventWriter
             for (var i = 0; i < chunk.Count; i++)
             {
                 var source = chunk.Events[i];
-                asyncEvents[destination++] = new AsyncProfileEvent(source.Name, source.SpanId, source.ParentSpanId,
-                    source.StartTimestamp, source.EndTimestamp, source.StartThreadIndex, source.EndThreadIndex);
+                asyncEvents[destination++] = new AsyncProfileEvent(
+                    source.Name,
+                    source.SpanId,
+                    source.ParentSpanId,
+                    source.StartTimestamp,
+                    source.EndTimestamp,
+                    source.StartThreadIndex,
+                    source.EndThreadIndex
+                );
             }
         }
 
