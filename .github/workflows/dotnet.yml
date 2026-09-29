@@ -43,49 +43,49 @@ jobs:
       contents: read
       id-token: write
 
-      steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: "10.0.x"
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: "10.0.x"
 
-      - name: Validate release tag
-        id: version
-        shell: bash
-        run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release tag: $GITHUB_REF_NAME"
-            echo "Expected format: vMAJOR.MINOR.PATCH, e.g. v0.1.0"
-            exit 1
-          fi
+    - name: Validate release tag
+      id: version
+      shell: bash
+      run: |
+        if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Invalid release tag: $GITHUB_REF_NAME"
+          echo "Expected format: vMAJOR.MINOR.PATCH, e.g. v0.1.0"
+          exit 1
+        fi
 
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing Netprof $VERSION"
+        VERSION="${GITHUB_REF_NAME#v}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Publishing Netprof $VERSION"
 
-      - name: Restore
-        run: dotnet restore src/library/Netprof.csproj
+    - name: Restore
+      run: dotnet restore src/library/Netprof.csproj
 
-      - name: Pack
-        run: >
-          dotnet pack src/library/Netprof.csproj
-          -c Release
-          --no-restore
-          -o ./artifacts
-          -p:PackageVersion=${{ steps.version.outputs.version }}
+    - name: Pack
+      run: >
+        dotnet pack src/library/Netprof.csproj
+        -c Release
+        --no-restore
+        -o ./artifacts
+        -p:PackageVersion=${{ steps.version.outputs.version }}
 
-      - name: NuGet login
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: alexover1
+    - name: NuGet login
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: alexover1
 
-      - name: NuGet push
-        run: >
-          dotnet nuget push "artifacts/*.nupkg"
-          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
-          --source "https://api.nuget.org/v3/index.json"
-          --skip-duplicate
+    - name: NuGet push
+      run: >
+        dotnet nuget push "artifacts/*.nupkg"
+        --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+        --source "https://api.nuget.org/v3/index.json"
+        --skip-duplicate
