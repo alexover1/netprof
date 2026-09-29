@@ -9,7 +9,7 @@ using Netprof;
 
 using var session = Profiler.StartRecording();
 
-using (profiler.EnterZone())
+using (Profiler.EnterZone())
 {
     Thread.SpinWait(10_000);
 }
@@ -17,7 +17,7 @@ using (profiler.EnterZone())
 session.Stop();
 
 var recording = session.Capture();
-profile.WriteReport(Console.Out);
+recording.WriteReport(Console.Out);
 ```
 
 ## Nested Zones
@@ -44,7 +44,7 @@ using var session = Profiler.StartRecording();
 RunSingleIteration();
 
 session.Stop();
-var profile = recording.Capture();
+var recording = session.Capture();
 ```
 
 Recording uses an event-based system. Each thread maintains a separate event stream, which avoids synchronization in the hot path.
@@ -52,8 +52,8 @@ Recording uses an event-based system. Each thread maintains a separate event str
 ## Reports
 
 ```
-var profile = recording.Capture();
-profile.WriteReport(Console.Out);
+var recording = session.Capture();
+recording.WriteReport(Console.Out);
 ```
 
 Reports include call counts, inclusive time, exclusive time, and per-call timing.
