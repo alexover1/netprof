@@ -17,11 +17,10 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
         finally
         {
             session.Stop();
+
             var recording = session.Capture();
-            foreach (var ev in recording.Threads[0].Events)
-            {
-                Console.WriteLine(ev.Name);
-            }
+            Console.WriteLine("==================================================");
+            recording.WriteReport(Console.Out);
         }
     }
 
@@ -30,7 +29,6 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
         using var zone = Profiler.EnterZone();
 
         var average = CalculateAverageTemperature(readings);
-
         UploadResults(average);
     }
 
@@ -38,14 +36,30 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
     {
         using var zone = Profiler.EnterZone();
 
-        var total = 0.0;
+        return SumTemperatures(readings, 0, readings.Length) / readings.Length;
+    }
 
-        foreach (var reading in readings)
+    // NOTE(alex): Please don't actually write it this way. This is purely to demonstrate recursion.
+    private double SumTemperatures(TemperatureReading[] readings, int start, int count)
+    {
+        using var zone = Profiler.EnterZone();
+
+        if (count <= 16)
         {
-            total += reading.Temperature / readings.Length;
+            var total = 0.0;
+
+            foreach (var reading in readings)
+            {
+                total += reading.Temperature / readings.Length;
+            }
+
+            return total;
         }
 
-        return total;
+        var leftCount = count / 2;
+        var rightCount = count - leftCount;
+
+        return SumTemperatures(readings, start, leftCount) + SumTemperatures(readings, start + leftCount, rightCount);
     }
 
     private void UploadResults(double averageTemperature)
@@ -57,6 +71,8 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
 
     private static async Task<TemperatureReading[]> ReceiveBatchAsync(CancellationToken cancellationToken)
     {
+        using var zone = Profiler.EnterAsyncZone();
+
         await Task.Delay(250, cancellationToken);
 
         return Enumerable
