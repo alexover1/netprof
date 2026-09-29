@@ -8,6 +8,7 @@ namespace Netprof.Generators;
 public sealed class ZoneGenerator : IIncrementalGenerator
 {
     private const string EnterZone = nameof(EnterZone);
+    private const string EnterAsyncZone = nameof(EnterAsyncZone);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -42,10 +43,10 @@ public sealed class ZoneGenerator : IIncrementalGenerator
         switch (invocation.Expression)
         {
             case MemberAccessExpressionSyntax memberAccess:
-                return memberAccess.Name.Identifier.ValueText == EnterZone;
+                return memberAccess.Name.Identifier.ValueText == EnterZone || memberAccess.Name.Identifier.ValueText == EnterAsyncZone;
 
             case IdentifierNameSyntax identifier:
-                return identifier.Identifier.ValueText == EnterZone;
+                return identifier.Identifier.ValueText == EnterZone || identifier.Identifier.ValueText == EnterAsyncZone;
 
             default:
                 return false;
@@ -59,7 +60,7 @@ public sealed class ZoneGenerator : IIncrementalGenerator
 
         // NOTE(alex): Now that we have the actual semantic model of the syntax node, ensure we are calling the correct method.
         if (symbolInfo.Symbol is not IMethodSymbol method ||
-            method.Name != EnterZone ||
+            (method.Name != EnterZone && method.Name != EnterAsyncZone) ||
             method.Parameters.Length != 0 ||
             method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != "global::Netprof.Profiler")
         {
@@ -74,9 +75,23 @@ public sealed class ZoneGenerator : IIncrementalGenerator
         }
 
         var interceptsLocationAttribute = location.GetInterceptsLocationAttributeSyntax();
-        var enclosingSymbol = context.SemanticModel.GetEnclosingSymbol(invocation.SpanStart, cancellationToken);
+        var enclosingSymbol = GetContainingNonLambdaSymbol(context.SemanticModel, invocation.SpanStart, cancellationToken);
         var callSite = enclosingSymbol?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? "<unknown>";
+        var isAsync = method.Name == EnterAsyncZone;
 
-        return new InvocationSourceLocation(interceptsLocationAttribute, callSite, location.GetDisplayLocation());
+        return new InvocationSourceLocation(interceptsLocationAttribute, callSite, location.GetDisplayLocation(), isAsync);
+    }
+
+    // NOTE(alex): This method was added to avoid zones inside lambdas always returning "lambda expression" as their callsite.
+    private static ISymbol? GetContainingNonLambdaSymbol(SemanticModel semanticModel, int position, CancellationToken cancellationToken)
+    {
+        var symbol = semanticModel.GetEnclosingSymbol(position, cancellationToken);
+
+        while (symbol is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction })
+        {
+            symbol = symbol.ContainingSymbol;
+        }
+
+        return symbol;
     }
 }

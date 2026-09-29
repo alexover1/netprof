@@ -38,7 +38,14 @@ internal class ProfileZonesWriter : IDisposable
                 {
                     WriteLine();
                     WriteLine($"{locations[i].InterceptsLocationAttribute}");
-                    WriteLine($"public static Zone EnterZone{i}() => Profiler.EnterZone(Zone{i}); // {locations[i].Location}");
+                    if (locations[i].IsAsync)
+                    {
+                        WriteLine($"public static AsyncZone EnterAsyncZone{i}() => Profiler.EnterAsyncZone(Zone{i}); // {locations[i].Location}");
+                    }
+                    else
+                    {
+                        WriteLine($"public static Zone EnterZone{i}() => Profiler.EnterZone(Zone{i}); // {locations[i].Location}");
+                    }
                 }
             });
         });

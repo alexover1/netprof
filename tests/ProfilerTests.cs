@@ -6,7 +6,26 @@ namespace Netprof.Tests;
 public sealed class ProfilerTests
 {
     [TestMethod]
-    public void TestProfileSynchronousZone()
+    public void TestProfileNamedSynchronousZone()
+    {
+        using var session = Profiler.StartRecording();
+        using (Profiler.EnterZone("SpinWait"))
+        {
+            Thread.SpinWait(100_000);
+        }
+        session.Stop();
+
+        var recording = session.Capture();
+        Assert.AreEqual(1, recording.Threads.Count);
+        Assert.AreEqual(1, recording.Threads[0].Events.Count);
+
+        var profileEvent = recording.Threads[0].Events[0];
+        Assert.AreEqual(-1, profileEvent.ParentIndex);
+        Assert.AreEqual("SpinWait", profileEvent.Name);
+    }
+
+    [TestMethod]
+    public void TestProfileGeneratedSynchronousZone()
     {
         using var session = Profiler.StartRecording();
         using (Profiler.EnterZone())
@@ -21,16 +40,16 @@ public sealed class ProfilerTests
 
         var profileEvent = recording.Threads[0].Events[0];
         Assert.AreEqual(-1, profileEvent.ParentIndex);
-        Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileSynchronousZone()", profileEvent.Name);
+        Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileGeneratedSynchronousZone()", profileEvent.Name);
     }
 
     [TestMethod]
-    public void TestProfileAsyncZone()
+    public void TestProfileNamedAsyncZone()
     {
         using var session = Profiler.StartRecording();
         var task = Task.Run(async () =>
         {
-            using (Profiler.EnterAsyncZone("Netprof.Tests.ProfilerTests.TestProfileAsyncZone()")) // TODO(alex): Intercept calls to EnterAsyncZone as well!
+            using (Profiler.EnterAsyncZone("Netprof.Tests.ProfilerTests.TestProfileAsyncZone()"))
             {
                 await Task.Delay(1);
             }
@@ -45,5 +64,29 @@ public sealed class ProfilerTests
         var profileEvent = recording.Threads[0].AsyncEvents[0];
         Assert.AreEqual(0, profileEvent.ParentSpanId);
         Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileAsyncZone()", profileEvent.Name);
+    }
+
+    [TestMethod]
+    public void TestProfileGeneratedAsyncZone()
+    {
+        using var session = Profiler.StartRecording();
+
+        var task = Task.Run(async () =>
+        {
+            using (Profiler.EnterAsyncZone())
+            {
+                await Task.Delay(1);
+            }
+        });
+        task.Wait();
+        session.Stop();
+
+        var recording = session.Capture();
+        Assert.AreEqual(1, recording.Threads.Count);
+        Assert.AreEqual(1, recording.Threads[0].AsyncEvents.Count);
+
+        var profileEvent = recording.Threads[0].AsyncEvents[0];
+        Assert.AreEqual(0, profileEvent.ParentSpanId);
+        Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileGeneratedAsyncZone()", profileEvent.Name);
     }
 }
