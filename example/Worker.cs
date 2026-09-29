@@ -19,7 +19,6 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
             session.Stop();
 
             var recording = session.Capture();
-            Console.WriteLine("==================================================");
             recording.WriteReport(Console.Out);
         }
     }

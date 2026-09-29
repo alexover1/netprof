@@ -9,6 +9,3 @@ using var host = builder.Build();
 
 await host.StartAsync();
 await host.WaitForShutdownAsync();
-
-Console.WriteLine();
-// Profiler.WriteReport(Console.Out);
