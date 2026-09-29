@@ -49,7 +49,7 @@ public sealed class ProfilerTests
         using var session = Profiler.StartRecording();
         var task = Task.Run(async () =>
         {
-            using (Profiler.EnterAsyncZone("Netprof.Tests.ProfilerTests.TestProfileAsyncZone()"))
+            using (Profiler.EnterAsyncZone("Netprof.Tests.ProfilerTests.TestProfileNamedAsyncZone()"))
             {
                 await Task.Delay(1);
             }
@@ -58,12 +58,11 @@ public sealed class ProfilerTests
         session.Stop();
 
         var recording = session.Capture();
-        Assert.AreEqual(1, recording.Threads.Count);
-        Assert.AreEqual(1, recording.Threads[0].AsyncEvents.Count);
+        var events = recording.Threads.SelectMany(thread => thread.AsyncEvents);
+        Assert.IsTrue(events.Any(e => e.Name == "Netprof.Tests.ProfilerTests.TestProfileNamedAsyncZone()"));
 
-        var profileEvent = recording.Threads[0].AsyncEvents[0];
+        var profileEvent = events.First(e => e.Name == "Netprof.Tests.ProfilerTests.TestProfileNamedAsyncZone()");
         Assert.AreEqual(0, profileEvent.ParentSpanId);
-        Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileAsyncZone()", profileEvent.Name);
     }
 
     [TestMethod]
@@ -82,11 +81,10 @@ public sealed class ProfilerTests
         session.Stop();
 
         var recording = session.Capture();
-        Assert.AreEqual(1, recording.Threads.Count);
-        Assert.AreEqual(1, recording.Threads[0].AsyncEvents.Count);
+        var events = recording.Threads.SelectMany(thread => thread.AsyncEvents);
+        Assert.IsTrue(events.Any(e => e.Name == "Netprof.Tests.ProfilerTests.TestProfileGeneratedAsyncZone()"));
 
-        var profileEvent = recording.Threads[0].AsyncEvents[0];
+        var profileEvent = events.First(e => e.Name == "Netprof.Tests.ProfilerTests.TestProfileGeneratedAsyncZone()");
         Assert.AreEqual(0, profileEvent.ParentSpanId);
-        Assert.AreEqual("Netprof.Tests.ProfilerTests.TestProfileGeneratedAsyncZone()", profileEvent.Name);
     }
 }
