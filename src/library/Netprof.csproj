@@ -2,5 +2,28 @@
   <PropertyGroup>
     <AssemblyName>Netprof</AssemblyName>
     <RootNamespace>$(AssemblyName)</RootNamespace>
+
+    <PackageId>Netprof</PackageId>
+    <Authors>Alex Overstreet</Authors>
+    <Description>.NET Instrumentation Library</Description>
+    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/alexover1/netprof</RepositoryUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="../generators/Generators.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false"
+    />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None
+      Include="../generators/bin/$(Configuration)/netstandard2.0/Generators.dll"
+      Pack="true"
+      PackagePath="analyzers/dotnet/cs/"
+      Visible="false"
+    />
+  </ItemGroup>
 </Project>

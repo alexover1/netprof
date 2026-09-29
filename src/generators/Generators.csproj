@@ -3,8 +3,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>Netprof.Generators</AssemblyName>
     <RootNamespace>$(AssemblyName)</RootNamespace>
-    <IncludeBuildOutput>false</IncludeBuildOutput>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
