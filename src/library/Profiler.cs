@@ -95,6 +95,18 @@ public static class Profiler
 
     /// <summary>
     /// Enters a logical profiling zone that can survive <c>await</c>.
+    ///
+    /// The name of the zone will be replaced with the name of the method <see cref="EnterAsyncZone"/> was called from.
+    /// </summary>
+    public static AsyncZone EnterAsyncZone()
+    {
+        throw new InvalidOperationException(
+            "The call to this method was not intercepted. Reference the Netprof.Generators package and enable Netprof using InterceptorsNamespaces in your project file."
+        );
+    }
+
+    /// <summary>
+    /// Enters a logical profiling zone that can survive <c>await</c>.
     /// </summary>
     public static AsyncZone EnterAsyncZone(string name)
     {
